@@ -1,6 +1,7 @@
 ---
 layout: "post"
 title : "PML4 Seviyesinde Sanal Adresten Fiziksel Adrese Geçiş"
+comments: true
 image: images/post1/PML43.png
 ---
 
