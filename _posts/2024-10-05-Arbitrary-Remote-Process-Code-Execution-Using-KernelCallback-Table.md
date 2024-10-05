@@ -4,6 +4,7 @@ title : "Arbitrary Remote Process Code Execution Using KernelCallbackTable"
 comments: true
 ---
 
+## Some Information About Technique
 Recently I was researching new code execution techniques to use in my own projects and I came across the KernelCallbackTable injection technique.
 
 This technique, which is usually used in malware production, allows us to inject our own malicious shellcode into a victim program and manipulate the code flow of this program and run our own malicious codes in the background.
