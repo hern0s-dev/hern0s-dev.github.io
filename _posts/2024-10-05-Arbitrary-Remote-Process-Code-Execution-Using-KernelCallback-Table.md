@@ -98,7 +98,7 @@ In my PoC, I will target `notepad.exe`. First I will open a handle to victim pro
 
 ### Shellcode
 
-My shellcode is responsible for calling CreateProcessA and launching Notepad.exe. I like the way I'm mapping my shellcode because it's a cleaner and more reliable way to execute a payload on a remote target. However, you can't pass arguments directly to the function. You should also map the arguments to the target process and make them accessible to the function, as I did in my proof of concept (PoC)
+My shellcode is responsible for calling CreateProcessA and launching calculator.exe. I like the way I'm mapping my shellcode because it's a cleaner and more reliable way to execute a payload on a remote target. However, you can't pass arguments directly to the function. You should also map the arguments to the target process and make them accessible to the function, as I did in my proof of concept (PoC)
 
 ```cpp
 #pragma pack(push, 1)
