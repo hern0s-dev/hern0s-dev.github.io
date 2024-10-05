@@ -14,26 +14,26 @@ timezone: Europe/Istanbul
 # jekyll-seo-tag settings › https://github.com/jekyll/jekyll-seo-tag/blob/master/docs/usage.md
 # ↓ --------------------------
 
-title: Marfix # the main title
+title: hern0s # the main title
 
-tagline: Developer/Reverser # it will display as the sub-title
+tagline: Developer/Reverser/Security Analyst and Part-Time Gamer # it will display as the sub-title
 
 description: Everything about Anticheats, Game hacking and Vulnerabilities. # used by seo meta and the atom feed
 
 # Fill in the protocol & hostname for your site.
 # e.g. 'https://username.github.io', note that it does not end with a '/'.
-url: "https://marfixdev.github.io"
+url: "https://hern0s-dev.github.io"
 
 github:
-  username: marfixdev # change to your github username
+  username: hern0s-dev # change to your github username
 
 twitter:
-  username: marfixdev # change to your twitter username
+  username: hern0s-dev # change to your twitter username
 
 social:
   # Change to your full name.
   # It will be displayed as the default author of the posts and the copyright owner in the Footer
-  name: marfixdev
+  name: hern0s-dev
   email: hipernos@gmail.com # change to your email address
   links:
     # The first element serves as the copyright owner's link
