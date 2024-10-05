@@ -1,5 +1,5 @@
 ---
-layout: "post"
+layout: post
 title : "PML4 Seviyesinde Sanal Adresten Fiziksel Adrese Geçiş"
 comments: true
 image: images/post1/PML43.png
@@ -222,3 +222,5 @@ Ve şimdi gelin Physical adressimiz ile bunu görüntüleyelim :nerd_face:
 Veee evet birebir aynı ! Hedeflediğimiz Virtual adressi ramimizin üzerindeki Physical adressini bulduk :muscle:
 
 Bir başka konuda görüşmek üzere :wave:
+
+{% include disqus.html %}
