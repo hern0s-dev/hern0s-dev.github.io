@@ -1,6 +1,7 @@
 ---
 layout: "post"
 title : "Arbitrary Remote Process Code Execution Using KernelCallbackTable"
+comments: true
 ---
 
 Recently I was researching new code execution techniques to use in my own projects and I came across the KernelCallbackTable injection technique.
