@@ -197,6 +197,21 @@ inline BOOL CALLBACK EnumWindowFunc(HWND hwnd, LPARAM param)
 ```
 ## Fullcode
 
+I'm first getting remote `PEB` address and calculating my `shellcode` size simply by subtracting `shellcode` address from `shellcode_end` address.
+
+> Whole Program Optimization must be turned off to get the correct shellcode size, as compilers can shift the function location due to optimization.
+{: .prompt-warning }
+
+Then I patch my shellcode to give it the ability to read the arguments mapped to the target process. You might also wonder why I passed arguments and function pointers. In assembly language, their addresses can be relative to the RIP pointer, meaning they wouldn’t be the same in the target process, which would result in incorrect function addresses and ultimately lead to a crash. This also applies to local function variables and arguments.
+
+We overcome this issue by patching shellcode and passing the addresses of our mapped arguments/variables in the target process instead.
+
+Later, we trigger a `WM_COMMAND` message in the target process, which calls `fnDWORD` and finally executes our shellcode because we hijacked its pointer in the KernelCallbackTable.
+
+When our shellcode executes, it calls `CreateProcessA` with the given parameters and then sets `args.completed` to `TRUE` to indicate that the job is finished.
+
+In the end, we can restore the `fnDWORD` pointer and free the memory.
+
 ```cpp
 #include <Windows.h>
 #include <stdio.h>
