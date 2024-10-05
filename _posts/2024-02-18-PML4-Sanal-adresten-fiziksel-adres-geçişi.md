@@ -223,4 +223,4 @@ Veee evet birebir aynı ! Hedeflediğimiz Virtual adressi ramimizin üzerindeki 
 
 Bir başka konuda görüşmek üzere :wave:
 
-{% include disqus.html %}
+{% if page.comments %} {% include disqus.html %} {% endif %}
